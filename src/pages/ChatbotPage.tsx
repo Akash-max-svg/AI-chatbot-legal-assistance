@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Sparkles, Scale, RotateCcw, History, X, Globe, Loader2, Trash2, MessageSquare, Download, Copy, Check, Share2, Mic, MicOff, AlertCircle, FileText, BookOpen, ChevronDown, ChevronUp, ExternalLink, Tag } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Bot, User, Sparkles, Scale, RotateCcw, History, X, Globe, Loader2, Trash2, MessageSquare, Download, Copy, Check, Share2, Mic, MicOff, AlertCircle, FileText, BookOpen, ChevronDown, ChevronUp, ExternalLink, Tag, Languages, Keyboard } from 'lucide-react';
 import { chatService, sampleQuestions } from '../services/chatService';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -10,6 +10,42 @@ import { generateLegalPDF, downloadTextFile, shareText } from '../utils/pdfExpor
 import type { LawSection } from '../services/ipcService';
 import { getActColor, getActFullName, getChapterLabel } from '../services/ipcService';
 
+// ── Indian Language configs with native names and placeholders ────────────────
+const INDIAN_LANGUAGES = [
+  { code: 'en',  label: 'English',    native: 'English',    flag: '🇮🇳', placeholder: 'Ask a legal question in English...',     script: 'latin'     },
+  { code: 'hi',  label: 'Hindi',      native: 'हिंदी',       flag: '🇮🇳', placeholder: 'कानूनी सवाल पूछें...',                    script: 'devanagari'},
+  { code: 'te',  label: 'Telugu',     native: 'తెలుగు',      flag: '🇮🇳', placeholder: 'చట్టపరమైన ప్రశ్న అడగండి...',             script: 'telugu'    },
+  { code: 'ta',  label: 'Tamil',      native: 'தமிழ்',       flag: '🇮🇳', placeholder: 'சட்ட கேள்வி கேளுங்கள்...',              script: 'tamil'     },
+  { code: 'kn',  label: 'Kannada',    native: 'ಕನ್ನಡ',       flag: '🇮🇳', placeholder: 'ಕಾನೂನು ಪ್ರಶ್ನೆ ಕೇಳಿ...',                 script: 'kannada'   },
+  { code: 'ml',  label: 'Malayalam',  native: 'മലയാളം',     flag: '🇮🇳', placeholder: 'നിയമ ചോദ്യം ചോദിക്കൂ...',              script: 'malayalam' },
+  { code: 'mr',  label: 'Marathi',    native: 'मराठी',       flag: '🇮🇳', placeholder: 'कायदेशीर प्रश्न विचारा...',              script: 'devanagari'},
+  { code: 'pa',  label: 'Punjabi',    native: 'ਪੰਜਾਬੀ',      flag: '🇮🇳', placeholder: 'ਕਾਨੂੰਨੀ ਸਵਾਲ ਪੁੱਛੋ...',               script: 'gurmukhi'  },
+  { code: 'bn',  label: 'Bengali',    native: 'বাংলা',       flag: '🇮🇳', placeholder: 'আইনি প্রশ্ন করুন...',                   script: 'bengali'   },
+  { code: 'or',  label: 'Odia',       native: 'ଓଡ଼ିଆ',       flag: '🇮🇳', placeholder: 'ଆଇନ ପ୍ରଶ୍ନ ପଚାରନ୍ତୁ...',              script: 'odia'      },
+  { code: 'as',  label: 'Assamese',   native: 'অসমীয়া',     flag: '🇮🇳', placeholder: 'আইনী প্ৰশ্ন সোধক...',                   script: 'bengali'   },
+  { code: 'gu',  label: 'Gujarati',   native: 'ગુજરાતી',     flag: '🇮🇳', placeholder: 'કાનૂની પ્રશ્ન પૂછો...',                  script: 'gujarati'  },
+];
+
+// ── Script detection patterns ─────────────────────────────────────────────────
+const SCRIPT_PATTERNS: Array<{ code: string; regex: RegExp }> = [
+  { code: 'hi', regex: /[\u0900-\u097F]/ },       // Devanagari (Hindi/Marathi)
+  { code: 'te', regex: /[\u0C00-\u0C7F]/ },       // Telugu
+  { code: 'ta', regex: /[\u0B80-\u0BFF]/ },       // Tamil
+  { code: 'kn', regex: /[\u0C80-\u0CFF]/ },       // Kannada
+  { code: 'ml', regex: /[\u0D00-\u0D7F]/ },       // Malayalam
+  { code: 'pa', regex: /[\u0A00-\u0A7F]/ },       // Gurmukhi (Punjabi)
+  { code: 'bn', regex: /[\u0980-\u09FF]/ },       // Bengali/Assamese
+  { code: 'gu', regex: /[\u0A80-\u0AFF]/ },       // Gujarati
+  { code: 'or', regex: /[\u0B00-\u0B7F]/ },       // Odia
+];
+
+function detectScriptLanguage(text: string): string | null {
+  for (const { code, regex } of SCRIPT_PATTERNS) {
+    if (regex.test(text)) return code;
+  }
+  return null;
+}
+
 interface ChatMessage {
   id: string;
   role: 'user' | 'ai';
@@ -19,6 +55,7 @@ interface ChatMessage {
   recommendations?: RecommendationData;
   ipcSections?: LawSection[];
   error?: boolean;
+  language?: string;
 }
 
 // ─── Law Section Card (works for all acts) ────────────────────────────────────
@@ -138,6 +175,24 @@ function LawSectionsPanel({ sections }: { sections: LawSection[] }) {
   );
 }
 
+// ── Sample phrases per language for quick start ───────────────────────────────
+function getSamplePhrases(langCode: string): string[] {
+  const phrases: Record<string, string[]> = {
+    hi: ['मुझे जमानत कैसे मिलेगी?', 'तलाक की प्रक्रिया क्या है?', 'FIR कैसे दर्ज करें?'],
+    te: ['బెయిల్ ఎలా పొందాలి?', 'విడాకులు ఎలా తీసుకోవాలి?', 'FIR ఎలా దాఖలు చేయాలి?'],
+    ta: ['ஜாமீன் எப்படி பெறுவது?', 'விவாகரத்து எப்படி செய்வது?', 'FIR எப்படி பதிவு செய்வது?'],
+    kn: ['ಜಾಮೀನು ಹೇಗೆ ಪಡೆಯುವುದು?', 'ವಿಚ್ಛೇದನ ಹೇಗೆ ಪಡೆಯುವುದು?', 'FIR ಹೇಗೆ ದಾಖಲಿಸುವುದು?'],
+    ml: ['ജാമ്യം എങ്ങനെ ലഭിക്കും?', 'വിവാഹമോചനം എങ്ങനെ?', 'FIR എങ്ങനെ നൽകാം?'],
+    mr: ['जामीन कसा मिळेल?', 'घटस्फोट कसा घ्यावा?', 'FIR कसा दाखल करावा?'],
+    pa: ['ਜ਼ਮਾਨਤ ਕਿਵੇਂ ਮਿਲੇਗੀ?', 'ਤਲਾਕ ਕਿਵੇਂ ਲੈਣਾ ਹੈ?', 'FIR ਕਿਵੇਂ ਦਰਜ ਕਰਾਈਏ?'],
+    bn: ['জামিন কীভাবে পাবো?', 'বিবাহবিচ্ছেদ কীভাবে করবো?', 'FIR কীভাবে দায়ের করবো?'],
+    or: ['ଜାମିନ କିପରି ପାଇବ?', 'ବିବାହ ବିଚ୍ଛେଦ କିପରି?', 'FIR କିପରି ଦାଖଲ କରିବ?'],
+    as: ['জামিন কেনেকৈ পাব?', 'বিবাহ বিচ্ছেদ কেনেকৈ?', 'FIR কেনেকৈ দাখিল কৰিব?'],
+    gu: ['જામીન કેવી રીતે મળશે?', 'છૂટાછેડા કેવી રીતે?', 'FIR કેવી રીতે દાખલ કરવી?'],
+  };
+  return phrases[langCode] || [];
+}
+
 interface ChatSession {
   id: string;
   title: string;
@@ -158,6 +213,12 @@ export default function ChatbotPage() {
   const [error, setError] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(true);
+  // ── New language + typing state ──────────────────────────────────────────
+  const [showLangKeyboard, setShowLangKeyboard] = useState(false);
+  const [userIsTyping, setUserIsTyping]         = useState(false);
+  const [detectedLang, setDetectedLang]         = useState<string | null>(null);
+  const [charCount, setCharCount]               = useState(0);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -275,6 +336,43 @@ export default function ChatbotPage() {
     }
   };
 
+  // ── Typing handler with language detection ─────────────────────────────────
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setInput(val);
+    setCharCount(val.length);
+
+    // Show "user is typing" indicator
+    setUserIsTyping(true);
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => setUserIsTyping(false), 1500);
+
+    // Auto-detect script language
+    if (val.length >= 2) {
+      const detected = detectScriptLanguage(val);
+      if (detected && detected !== currentLanguage) {
+        setDetectedLang(detected);
+      } else {
+        setDetectedLang(null);
+      }
+    } else {
+      setDetectedLang(null);
+    }
+
+    // Auto-resize textarea
+    const ta = e.target;
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
+  }, [currentLanguage]);
+
+  // Accept auto-detected language
+  const acceptDetectedLang = () => {
+    if (detectedLang) {
+      setCurrentLanguage(detectedLang);
+      setDetectedLang(null);
+    }
+  };
+
   const clearChat = () => {
     setMessages([]);
     setSessionId(null);
@@ -360,8 +458,16 @@ export default function ChatbotPage() {
           </div>
           <div className="flex items-center gap-2">
             <div className="relative">
-              <select value={currentLanguage} onChange={(e) => setCurrentLanguage(e.target.value)} className="input-field text-xs py-1.5 pr-6 pl-2 appearance-none cursor-pointer">
-                {languages.map((l) => (<option key={l.code} value={l.code}>{l.label}</option>))}
+              <select
+                value={currentLanguage}
+                onChange={(e) => { setCurrentLanguage(e.target.value); setDetectedLang(null); }}
+                className="input-field text-xs py-1.5 pr-6 pl-2 appearance-none cursor-pointer min-w-[110px]"
+              >
+                {INDIAN_LANGUAGES.map((l) => (
+                  <option key={l.code} value={l.code}>
+                    {l.native} ({l.label})
+                  </option>
+                ))}
               </select>
               <Globe size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
             </div>
@@ -427,7 +533,10 @@ export default function ChatbotPage() {
                 </div>
                 <h2 className="text-xl font-serif font-semibold text-gray-100 mb-2">How can I assist you?</h2>
                 <p className="text-sm text-gray-400 max-w-md mb-8">
-                  Ask about Indian laws, case procedures, court rulings, or legal terminology. Currently set to <span className="text-gold-400">{currentLang}</span>.
+                  Ask about Indian laws, case procedures, court rulings, or legal terminology. Currently set to <span className="text-gold-400">{INDIAN_LANGUAGES.find(l => l.code === currentLanguage)?.label || currentLang}</span>
+                  {currentLanguage !== 'en' && (
+                    <span className="text-gray-500"> — Type in {INDIAN_LANGUAGES.find(l => l.code === currentLanguage)?.native} or English</span>
+                  )}.
                 </p>
                 <div className="grid sm:grid-cols-2 gap-3 w-full max-w-lg">
                   {sampleQuestions.map((q) => (
@@ -509,7 +618,9 @@ export default function ChatbotPage() {
                   </div>
                   <div className="bg-navy-800 border border-navy-700 rounded-2xl rounded-bl-md px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-400 mr-1">Gemini is analyzing</span>
+                      <span className="text-xs text-gray-400 mr-1">
+                        Analyzing in {INDIAN_LANGUAGES.find(l => l.code === currentLanguage)?.label || 'English'}
+                      </span>
                       <span className="w-2 h-2 bg-gold-400 rounded-full typing-dot" />
                       <span className="w-2 h-2 bg-gold-400 rounded-full typing-dot" style={{ animationDelay: '150ms' }} />
                       <span className="w-2 h-2 bg-gold-400 rounded-full typing-dot" style={{ animationDelay: '300ms' }} />
@@ -529,22 +640,187 @@ export default function ChatbotPage() {
                 <span>{error}</span>
               </div>
             )}
-            <div className="max-w-3xl mx-auto flex items-end gap-2">
-              {voiceSupported && (
+
+            {/* ── Language Keyboard Panel ─────────────────────────────────── */}
+            {showLangKeyboard && (
+              <div className="max-w-3xl mx-auto mb-3 rounded-xl border border-navy-700/60 bg-navy-900/80 backdrop-blur-sm overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-navy-700/40">
+                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gold-400">
+                    <Languages size={13} />
+                    Type in Indian Languages
+                  </div>
+                  <button onClick={() => setShowLangKeyboard(false)} className="text-gray-500 hover:text-gray-300">
+                    <X size={13} />
+                  </button>
+                </div>
+                <div className="p-2 grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+                  {INDIAN_LANGUAGES.map(lang => (
+                    <button
+                      key={lang.code}
+                      onClick={() => {
+                        setCurrentLanguage(lang.code);
+                        setDetectedLang(null);
+                        inputRef.current?.focus();
+                      }}
+                      className={`flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg text-[10px] font-medium transition-all border ${
+                        currentLanguage === lang.code
+                          ? 'bg-gold-500/20 border-gold-500/50 text-gold-400'
+                          : 'bg-navy-800/50 border-navy-700/40 text-gray-400 hover:bg-navy-700/60 hover:text-gray-200'
+                      }`}
+                    >
+                      <span className="text-sm leading-none">{lang.flag}</span>
+                      <span className="text-[9px] text-gray-500 leading-none">{lang.native}</span>
+                      <span className="leading-none">{lang.label}</span>
+                    </button>
+                  ))}
+                </div>
+                {/* Sample phrases for selected language */}
+                {currentLanguage !== 'en' && (
+                  <div className="px-3 pb-2 border-t border-navy-700/30 pt-2">
+                    <p className="text-[9px] text-gray-600 mb-1">Sample phrases:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {getSamplePhrases(currentLanguage).map((phrase, i) => (
+                        <button
+                          key={i}
+                          onClick={() => { setInput(phrase); inputRef.current?.focus(); }}
+                          className="text-[10px] px-2 py-1 rounded-full bg-navy-700/50 border border-navy-600/40 text-gray-400 hover:text-gold-400 hover:border-gold-500/30 transition-all"
+                        >
+                          {phrase}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Auto-language detection banner ────────────────────────────── */}
+            {detectedLang && (
+              <div className="max-w-3xl mx-auto mb-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-[11px]">
+                <Globe size={12} className="text-blue-400 flex-shrink-0" />
+                <span className="text-gray-300 flex-1">
+                  Detected: <span className="text-blue-400 font-semibold">{INDIAN_LANGUAGES.find(l => l.code === detectedLang)?.label}</span> script
+                </span>
                 <button
-                  onClick={toggleVoice}
-                  className={`btn-secondary py-2.5 px-3 ${isListening ? 'bg-red-500/20 border-red-500/40 text-red-400' : ''}`}
-                  title={isListening ? 'Stop voice input' : 'Voice input'}
+                  onClick={acceptDetectedLang}
+                  className="px-2 py-0.5 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-400 hover:bg-blue-500/30 transition-all font-medium"
                 >
-                  {isListening ? <MicOff size={18} /> : <Mic size={18} />}
+                  Switch →
                 </button>
+                <button onClick={() => setDetectedLang(null)} className="text-gray-600 hover:text-gray-400">
+                  <X size={11} />
+                </button>
+              </div>
+            )}
+
+            {/* ── Main input row ────────────────────────────────────────────── */}
+            <div className="max-w-3xl mx-auto">
+              {/* Active language badge + char count shown above textarea while typing */}
+              {(userIsTyping || input.length > 0) && (
+                <div className="flex items-center justify-between mb-1 px-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold border transition-all ${
+                      currentLanguage !== 'en'
+                        ? 'bg-gold-500/15 border-gold-500/30 text-gold-400'
+                        : 'bg-navy-700/40 border-navy-600/30 text-gray-500'
+                    }`}>
+                      🇮🇳 {INDIAN_LANGUAGES.find(l => l.code === currentLanguage)?.native || 'English'}
+                    </span>
+                    {userIsTyping && (
+                      <span className="flex items-center gap-0.5 text-[9px] text-gray-600">
+                        <span className="w-1 h-1 bg-gold-500 rounded-full animate-pulse" />
+                        <span className="w-1 h-1 bg-gold-500 rounded-full animate-pulse" style={{ animationDelay: '200ms' }} />
+                        <span className="w-1 h-1 bg-gold-500 rounded-full animate-pulse" style={{ animationDelay: '400ms' }} />
+                        <span className="ml-0.5 text-gray-600">typing</span>
+                      </span>
+                    )}
+                  </div>
+                  <span className={`text-[9px] ${charCount > 500 ? 'text-amber-400' : 'text-gray-700'}`}>
+                    {charCount}/1000
+                  </span>
+                </div>
               )}
-              <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder="Ask a legal question..." rows={1} className="input-field flex-1 resize-none" />
-              <button onClick={() => send()} disabled={!input.trim() || isTyping} className="btn-primary py-2.5 px-4 disabled:opacity-40 disabled:cursor-not-allowed">
-                {isTyping ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-              </button>
+
+              <div className="flex items-end gap-2">
+                {/* Voice button */}
+                {voiceSupported && (
+                  <button
+                    onClick={toggleVoice}
+                    title={isListening ? 'Stop voice input' : `Voice input (${INDIAN_LANGUAGES.find(l => l.code === currentLanguage)?.label || 'English'})`}
+                    className={`flex-shrink-0 btn-secondary py-2.5 px-3 transition-all ${
+                      isListening
+                        ? 'bg-red-500/20 border-red-500/40 text-red-400 animate-pulse'
+                        : ''
+                    }`}
+                  >
+                    {isListening ? <MicOff size={18} /> : <Mic size={18} />}
+                  </button>
+                )}
+
+                {/* Language keyboard toggle */}
+                <button
+                  onClick={() => setShowLangKeyboard(v => !v)}
+                  title="Switch input language"
+                  className={`flex-shrink-0 btn-secondary py-2.5 px-3 transition-all ${
+                    showLangKeyboard || currentLanguage !== 'en'
+                      ? 'border-gold-500/40 text-gold-400 bg-gold-500/10'
+                      : ''
+                  }`}
+                >
+                  <Keyboard size={18} />
+                </button>
+
+                {/* Textarea */}
+                <div className="relative flex-1">
+                  <textarea
+                    ref={inputRef}
+                    value={input}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
+                    placeholder={
+                      INDIAN_LANGUAGES.find(l => l.code === currentLanguage)?.placeholder
+                      || 'Ask a legal question...'
+                    }
+                    rows={1}
+                    maxLength={1000}
+                    className={`input-field w-full resize-none transition-all leading-relaxed ${
+                      currentLanguage !== 'en' ? 'text-base' : 'text-sm'
+                    }`}
+                    style={{ minHeight: '44px', maxHeight: '120px' }}
+                    lang={currentLanguage}
+                  />
+                </div>
+
+                {/* Send button */}
+                <button
+                  onClick={() => send()}
+                  disabled={!input.trim() || isTyping}
+                  title="Send message"
+                  className="flex-shrink-0 btn-primary py-2.5 px-4 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isTyping ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                </button>
+              </div>
+
+              {/* Bottom bar: current language + disclaimer */}
+              <div className="flex items-center justify-between mt-2 px-1">
+                <div className="flex items-center gap-1.5">
+                  <Globe size={10} className="text-gray-600" />
+                  <span className="text-[10px] text-gray-600">
+                    Responding in:{' '}
+                    <button
+                      onClick={() => setShowLangKeyboard(v => !v)}
+                      className="text-gold-600 hover:text-gold-400 font-medium transition-colors"
+                    >
+                      {INDIAN_LANGUAGES.find(l => l.code === currentLanguage)?.label || currentLanguage}
+                    </button>
+                  </span>
+                </div>
+                <p className="text-[9px] text-gray-700">
+                  For research only · Not legal advice
+                </p>
+              </div>
             </div>
-            <p className="text-[10px] text-gray-600 text-center mt-2 max-w-3xl mx-auto">AI-generated responses are for legal research only. Not a substitute for professional legal advice.</p>
           </div>
         </div>
       </div>
@@ -552,6 +828,11 @@ export default function ChatbotPage() {
       <style>{`
         @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
         .animate-float { animation: float 3s ease-in-out infinite; }
+        @keyframes typing-bounce {
+          0%, 60%, 100% { transform: translateY(0); }
+          30%            { transform: translateY(-4px); }
+        }
+        .typing-dot { animation: typing-bounce 1.2s ease-in-out infinite; }
       `}</style>
     </div>
   );
