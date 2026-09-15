@@ -3,7 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Scale, LayoutDashboard, MessageSquare, FileText, Search, BookOpen,
   Mic, Info, LogIn, Menu, X, ChevronDown, Bell, User, FilePlus,
-  Briefcase, HelpCircle, Settings, LogOut, Gavel, Brain, Clock,
+  Briefcase, HelpCircle, Settings, LogOut, Gavel, Brain, Clock, Video,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { notificationService } from '../services/notificationService';
@@ -14,6 +14,7 @@ const citizenNav = [
   { to: '/dashboard',   icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/chatbot',     icon: MessageSquare,   label: 'AI Chatbot' },
   { to: '/case-filing', icon: FilePlus,        label: 'Case Filing' },
+  { to: '/meetings',    icon: Video,           label: 'Meetings' },
   { to: '/search',      icon: Search,          label: 'Case Search' },
   { to: '/documents',   icon: Briefcase,       label: 'Documents' },
   { to: '/knowledge',   icon: BookOpen,        label: 'Knowledge Base' },
@@ -27,6 +28,7 @@ const lawyerNav = [
   { to: '/dashboard',   icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/chatbot',     icon: MessageSquare,   label: 'AI Chatbot' },
   { to: '/case-filing', icon: FilePlus,        label: 'Case Filing' },
+  { to: '/meetings',    icon: Video,           label: 'Meetings' },
   { to: '/documents',   icon: Briefcase,       label: 'Documents' },
   { to: '/knowledge',   icon: BookOpen,        label: 'Knowledge Base' },
   { to: '/search',      icon: Search,          label: 'Case Search' },
@@ -41,6 +43,7 @@ const judgeNav = [
   { to: '/judge/assigned-cases', icon: Scale,           label: 'Assigned Cases' },
   { to: '/judge/pending',        icon: Clock,           label: 'Pending Judgments' },
   { to: '/judge/ai-summaries',   icon: Brain,           label: 'AI Summaries' },
+  { to: '/meetings',             icon: Video,           label: 'Meetings' },
   { to: '/research',             icon: Brain,           label: 'Legal Research' },
   { to: '/knowledge',            icon: BookOpen,        label: 'Knowledge Base' },
   { to: '/search',               icon: Search,          label: 'Case Search' },

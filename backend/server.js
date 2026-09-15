@@ -22,6 +22,7 @@ const languageRoutes = require('./routes/languages');
 const ipcRoutes      = require('./routes/ipc');
 const lawsRoutes     = require('./routes/laws');
 const ragRoutes      = require('./routes/rag');
+const meetingRoutes  = require('./routes/meetings');
 
 const app = express();
 
@@ -86,6 +87,7 @@ app.use('/api/languages', languageRoutes);
 app.use('/api/ipc',      ipcRoutes);
 app.use('/api/laws',     lawsRoutes);
 app.use('/api/rag',      ragRoutes);
+app.use('/api/meetings', meetingRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -30,6 +30,7 @@ import JudgeCasesPage from "./pages/JudgeCasesPage";
 import AssignedCasesPage from "./pages/AssignedCasesPage";
 import PendingJudgmentsPage from "./pages/PendingJudgmentsPage";
 import AIJudgmentSummariesPage from "./pages/AIJudgmentSummariesPage";
+import VideoConferencePage from "./pages/VideoConferencePage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -201,6 +202,14 @@ function App() {
           element={
             <ProtectedRoute>
               <NotificationsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="meetings"
+          element={
+            <ProtectedRoute>
+              <VideoConferencePage />
             </ProtectedRoute>
           }
         />
